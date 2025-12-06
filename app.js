@@ -2,6 +2,9 @@ const express = require("express");
 const fetch = require("node-fetch");
 const app = express();
 
+// 🧠 Memoria en RAM por usuario (clave = número de WhatsApp)
+const conversations = {};
+
 // 🔐 Configuración de credenciales
 // WhatsApp Cloud API (ya las tienes configuradas)
 const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQNoF9iZBmjg8CI9mWKXBZBVZCcUDGLZCOsyzglbs3C0ja6F2uFkyrZBU0UcE7TZCNtpTvLkbNbkHpqZCXjXDiErnb3rvQJzn8dX0YUFY6ZA7BiGlNcAgWA6X4SlKjB7Xv7T1hpgR6akeRRPF9q1FDZAjq6o6DOdfHyZAIRtE9WZAdFHnqdNUXOhh4P5VYKnOGQxx19IoM5HZB8KIf4VqWUthxIEa3BGoIue8ArW6LtBQYKrkWn7k37K6ZCHZCIgaryZAzHXDoQq0WSdeyi6NotYYP5xBrlqJUkZD";
@@ -70,14 +73,17 @@ async function sendWhatsAppMessage(to, message) {
   }
 }
 
-// 🤖 Función para generar respuesta con IA (OpenAI)
-async function generateAIReply(userText) {
+// 🤖 Función para generar respuesta con IA (OpenAI) usando historial
+async function generateAIReply(history) {
   if (!OPENAI_API_KEY) {
     console.error("❌ OPENAI_API_KEY no está configurada");
     return "Por ahora no tengo acceso a mi cerebro de IA 😅, intenta más tarde.";
   }
 
   try {
+    // Tomamos solo los últimos 10 mensajes para no hacerla infinita
+    const recentHistory = history.slice(-10);
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -106,16 +112,15 @@ TU OBJETIVO:
    - Paso 4: Proponer un siguiente paso claro (ej: link de compra, tomar datos para pedido, agendar llamada o pasar a un asesor).
 
 REGLAS:
+- Usa el contexto de los mensajes anteriores: no repitas el saludo en cada mensaje, ni vuelvas a preguntar lo mismo si ya lo sabes.
 - Siempre termina tu mensaje con UNA sola pregunta para seguir avanzando.
-- Si la persona pide hablar con alguien (“asesor”, “humano”, “llamada”, etc.), deja de vender tú y responde que con gusto lo contactactaremos pronto y pregunta el dato de contacto (por ejemplo, email o mejor horario).
+- Si la persona pide hablar con alguien (“asesor”, “humano”, “llamada”, etc.), deja de vender tú y responde que con gusto lo pasas a un asesor humano y pregunta el dato de contacto (por ejemplo, email o mejor horario).
 - No inventes datos específicos de precios o condiciones que no tengas; si te los piden, sugiere que un asesor humano confirme esos detalles.
 - Si el mensaje del usuario es muy confuso, pídele que te aclare con una pregunta simple.
           `.trim(),
           },
-          {
-            role: "user",
-            content: userText,
-          },
+          // 👇 Aquí inyectamos el historial de la conversación
+          ...recentHistory,
         ],
       }),
     });
@@ -134,7 +139,7 @@ REGLAS:
   }
 }
 
-// ✅ Ruta POST /webhook para recibir mensajes y responder con IA
+// ✅ Ruta POST /webhook para recibir mensajes y responder con IA + memoria
 app.post("/webhook", async (req, res) => {
   console.log("🟢 POST /webhook recibido");
   console.log("Body recibido:");
@@ -167,17 +172,29 @@ app.post("/webhook", async (req, res) => {
 
     console.log(`👤 Mensaje de ${from}: ${text}`);
 
-    // 👉 Generamos respuesta con IA
-    const aiReply = await generateAIReply(text);
+    // 🧠 Inicializar historial si no existe
+    if (!conversations[from]) {
+      conversations[from] = [];
+    }
+
+    // Agregar mensaje del usuario al historial
+    conversations[from].push({
+      role: "user",
+      content: text,
+    });
+
+    // 👉 Generamos respuesta con IA usando TODO el historial de este usuario
+    const aiReply = await generateAIReply(conversations[from]);
+
+    // Agregar respuesta del bot al historial
+    conversations[from].push({
+      role: "assistant",
+      content: aiReply,
+    });
 
     // Enviamos respuesta por WhatsApp
     await sendWhatsAppMessage(from, aiReply);
   } catch (error) {
     console.error("Error procesando el webhook:", error);
   }
-});
-
-// Arrancar el servidor
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
