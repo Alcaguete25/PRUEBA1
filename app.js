@@ -6,11 +6,11 @@ const app = express();
 const conversations = {};
 
 // 🔐 Configuración de credenciales
-// WhatsApp Cloud API (ya las tienes configuradas)
-const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQNoF9iZBmjg8CI9mWKXBZBVZCcUDGLZCOsyzglbs3C0ja6F2uFkyrZBU0UcE7TZCNtpTvLkbNbkHpqZCXjXDiErnb3rvQJzn8dX0YUFY6ZA7BiGlNcAgWA6X4SlKjB7Xv7T1hpgR6akeRRPF9q1FDZAjq6o6DOdfHyZAIRtE9WZAdFHnqdNUXOhh4P5VYKnOGQxx19IoM5HZB8KIf4VqWUthxIEa3BGoIue8ArW6LtBQYKrkWn7k37K6ZCHZCIgaryZAzHXDoQq0WSdeyi6NotYYP5xBrlqJUkZD";
+// PON AQUÍ tus datos reales de WhatsApp Cloud API:
+const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQCk4tdOTGR5KudLzCx3cATf2kfpn9QXdV4ToCgmZCZCceDmPt5lXj4VHwDFqsBsr66OTLQG1gU0aMNCEQO5yFKM2ONKuWPcxZA7lHwwsnA77GNQhjBMRPyNL1ZBwTEZBtEOlZB1Hl4hDXetqU1vFUMyZCMbwFsPN7ouT4StZCc1ZA8MIDsEEmtwSie3ZBo95rVtVKssyZCsWCxhNVA2EMMqRuWdFOrOh50HZBV7rpYYkvOtNUMcp1tdhMMidyWzrwrtnGKTknrcHlkJ7Glp9ojsAF5HwMtUZD";
 const PHONE_NUMBER_ID = "956980390828651";
 
-// OpenAI API (la leemos desde variable de entorno en Render)
+// OpenAI API (desde variable de entorno en Render)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // Puerto donde va a escuchar el servidor
@@ -20,7 +20,7 @@ app.use(express.json());
 
 // Ruta básica para probar que el servidor funciona
 app.get("/", (req, res) => {
-  res.send("Servidor funcionando ✅ con IA");
+  res.send("Servidor funcionando ✅ con IA y memoria");
 });
 
 // 👉 Token que definimos para la verificación del webhook
@@ -42,7 +42,79 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// 🧠 Función para enviar un mensaje de WhatsApp usando la API de Meta
+// 🧠 Función para generar respuesta con IA (OpenAI) usando historial
+async function generateAIReply(history) {
+  if (!OPENAI_API_KEY) {
+    console.error("❌ OPENAI_API_KEY no está configurada");
+    return "Por ahora no tengo acceso a mi cerebro de IA 😅, intenta más tarde.";
+  }
+
+  try {
+    // Tomamos solo los últimos 10 mensajes para no hacerla infinita
+    const recentHistory = history.slice(-10);
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content: `
+Eres un asesor de ventas por WhatsApp de Alcagüete, una marca de alimentos saludables (snacks horneados, premezclas sin gluten, productos sin azúcar añadida y opciones gluten free).
+
+TU ESTILO:
+- Hablas en primera persona, cercano y claro, como un vendedor humano amable.
+- Tono cálido y profesional, típico colombiano/neutro.
+- Mensajes cortos (2 a 4 líneas) con algunos emojis suaves (🙂😉✨), sin abusar.
+
+MEMORIA Y CONTEXTO:
+- El historial que ves incluye mensajes anteriores de la conversación.
+- Si ya existe al menos un mensaje con role "assistant", significa que YA saludaste.
+- SOLO puedes saludar con "Hola", "¡Hola!" o similar en tu PRIMER mensaje. En los siguientes NO debes empezar con saludos, sino continuar la conversación (por ejemplo: "Perfecto...", "Súper...", "Entiendo...", "Listo, entonces...").
+- No repitas preguntas que ya hiciste si ya tienes esa información (por ejemplo, si ya sabes que es para un negocio en Medellín, no vuelvas a preguntar eso).
+
+OBJETIVO:
+1. Entender qué necesita la persona (para quién es, ocasión de consumo, si es para casa o negocio, aproximado de presupuesto).
+2. Guiarla por un flujo de ventas:
+   - Paso 1: Saludar y preguntar qué está buscando o qué antojo/ necesidad tiene (solo al inicio).
+   - Paso 2: Hacer 1–2 preguntas de calificación (tipo de cliente, cantidad, frecuencia, tipo de producto).
+   - Paso 3: Recomendar 1–3 opciones concretas de productos de Alcagüete (por tipo, no necesitas precios exactos) y explicar beneficios en lenguaje sencillo.
+   - Paso 4: Proponer un siguiente paso claro (ej: enviar catálogo, link de compra, tomar datos para pedido, agendar llamada o pasar a un asesor humano).
+
+REGLAS:
+- Usa el contexto de los mensajes anteriores para avanzar, no para quedarte en el saludo.
+- Siempre termina tu mensaje con UNA sola pregunta para seguir avanzando.
+- Si la persona pide hablar con alguien (“asesor”, “humano”, “llamada”, etc.), deja de vender tú y responde que con gusto lo pasas a un asesor humano y pregunta el dato de contacto (por ejemplo, email o mejor horario).
+- No inventes datos específicos de precios o condiciones que no tengas; si te los piden, sugiere que un asesor humano confirme esos detalles.
+- Si el mensaje del usuario es muy confuso, pídele que te aclare con una pregunta simple.
+            `.trim(),
+          },
+          // 👇 Aquí inyectamos el historial de la conversación
+          ...recentHistory,
+        ],
+      }),
+    });
+
+    const data = await response.json();
+    console.log("Respuesta de OpenAI:");
+    console.log(JSON.stringify(data, null, 2));
+
+    const raw = data.choices?.[0]?.message?.content || "";
+    const aiMessage = raw.trim();
+
+    return aiMessage || "No entendí muy bien, ¿me cuentas de nuevo qué necesitas? 🙂";
+  } catch (error) {
+    console.error("Error llamando a OpenAI:", error);
+    return "Tuve un problema técnico procesando tu mensaje 😅. Intenta de nuevo en un momento.";
+  }
+}
+
+// 📨 Función para enviar un mensaje de WhatsApp usando la API de Meta
 async function sendWhatsAppMessage(to, message) {
   const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
 
@@ -70,74 +142,6 @@ async function sendWhatsAppMessage(to, message) {
     console.log(JSON.stringify(data, null, 2));
   } catch (error) {
     console.error("Error llamando a la API de WhatsApp:", error);
-  }
-}
-
-// 🤖 Función para generar respuesta con IA (OpenAI) usando historial
-async function generateAIReply(history) {
-  if (!OPENAI_API_KEY) {
-    console.error("❌ OPENAI_API_KEY no está configurada");
-    return "Por ahora no tengo acceso a mi cerebro de IA 😅, intenta más tarde.";
-  }
-
-  try {
-    // Tomamos solo los últimos 10 mensajes para no hacerla infinita
-    const recentHistory = history.slice(-10);
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-Eres un asesor de ventas por WhatsApp de una marca de alimentos saludables llamada Alcagüete (snacks horneados, premezclas sin gluten, galletas, barras de cereal y productos de despensa). 
-
-TU ESTILO:
-- Hablas en primera persona, cercano y claro, con un tono descomplicado como un vendedor humano amable.
-- Usas un tono cálido y descomplidado, respetuoso típico colombiano/neutro.
-- Escribes mensajes cortos (2 a 4 líneas) y limita el uso de emojis, sólo cuando sea necesario y enfocalos más en emojis de alimentos, y no en emociones/caras.
-
-TU OBJETIVO:
-1. Entender qué necesita la persona (para quién es, ocasión de consumo, si es para casa o empresa, dónde se encuentra ubicado).
-2. Guiarla por un flujo de ventas:
-   - Paso 1: Saludar y preguntar qué está buscando... (solo en el PRIMER mensaje de la conversación).
-   - Paso 2: Hacer 1–2 preguntas de calificación (cantidad, frecuencia, si es para consumo personal o negocio).
-   - Paso 3: Enviar presentación con portafolio y términos y condiciones. Si es para consumo personal, llevarlos a la pagina web de alcaguete.
-   - Paso 4: Proponer un siguiente paso claro (ej: link de compra, tomar datos para pedido, agendar llamada o pasar a un asesor).
-
-REGLAS:
-- El historial de mensajes incluye lo que tú ya has respondido. Si ya existe al menos un mensaje de 'assistant' en el historial, significa que ya saludaste.
-- SOLO puedes saludar con "Hola", "¡Hola!" o similar en tu PRIMER mensaje de la conversación. En los siguientes NO debes empezar con saludos, sino continuar la conversación (por ejemplo: "Perfecto...", "Súper...", "Listo, entonces...", etc.).
-- Usa el contexto de los mensajes anteriores: no repitas el saludo en cada mensaje, ni vuelvas a preguntar lo mismo si ya lo sabes.
-- Siempre termina tu mensaje con UNA sola pregunta para seguir avanzando.
-- Si la persona pide hablar con alguien (“asesor”, “humano”, “llamada”, etc.), deja de vender tú y responde que con gusto lo contactarémos y pregunta el dato de contacto (por ejemplo, email o mejor horario).
-- No inventes datos específicos de precios o condiciones que no tengas; si te los piden, sugiere que un asesor humano confirme esos detalles.
-- Si el mensaje del usuario es muy confuso, pídele que te aclare con una pregunta simple.
-          `.trim(),
-          },
-          // 👇 Aquí inyectamos el historial de la conversación
-          ...recentHistory,
-        ],
-      }),
-    });
-
-    const data = await response.json();
-    console.log("Respuesta de OpenAI:");
-    console.log(JSON.stringify(data, null, 2));
-
-    const raw = data.choices?.[0]?.message?.content || "";
-    const aiMessage = raw.trim();
-
-    return aiMessage || "No entendí muy bien, ¿me cuentas de nuevo qué necesitas? 🙂";
-  } catch (error) {
-    console.error("Error llamando a OpenAI:", error);
-    return "Tuve un problema técnico procesando tu mensaje 😅. Intenta de nuevo en un momento.";
   }
 }
 
@@ -179,40 +183,61 @@ app.post("/webhook", async (req, res) => {
       conversations[from] = [];
     }
 
+    console.log(
+      `📚 Historial actual de ${from}: ${conversations[from].length} mensajes`
+    );
+
     // Agregar mensaje del usuario al historial
     conversations[from].push({
       role: "user",
       content: text,
     });
 
-   // 👉 Generamos respuesta con IA usando TODO el historial de este usuario
-let aiReply = await generateAIReply(conversations[from]);
+    // 👉 Generamos respuesta con IA usando TODO el historial de este usuario
+    let aiReply = await generateAIReply(conversations[from]);
 
-// 🧠 Ver si ya hemos respondido antes a este número
-const hasAssistantBefore = conversations[from].some(
-  (m) => m.role === "assistant"
-);
+    // 🧠 Ver si ya hemos respondido antes a este número
+    const hasAssistantBefore = conversations[from].some(
+      (m) => m.role === "assistant"
+    );
 
-// Si ya hemos hablado antes y la IA arrancó con "Hola...", se lo recortamos
-if (hasAssistantBefore) {
-  const original = aiReply;
-  aiReply = aiReply.replace(/^(\s*¡?Hola[!¡]?[,\s]*)/i, "").trim();
+    // Si ya hemos hablado antes y la IA arrancó con "Hola...", se lo recortamos
+    if (hasAssistantBefore) {
+      const original = aiReply;
+      aiReply = aiReply.replace(/^(\s*¡?Hola[!¡]?[,\s]*)/i, "").trim();
 
-  if (original !== aiReply) {
-    console.log("✂️ Se recortó un saludo repetido al inicio de la respuesta de IA");
+      if (original !== aiReply) {
+        console.log(
+          "✂️ Se recortó un saludo repetido al inicio de la respuesta de IA"
+        );
+      }
+    }
+
+    // Por si acaso queda vacío después de recortar
+    if (!aiReply) {
+      aiReply =
+        "Perfecto, cuéntame un poco más para ayudarte mejor 🙂 ¿Qué te gustaría ofrecer exactamente?";
+    }
+
+    // Agregar respuesta del bot al historial
+    conversations[from].push({
+      role: "assistant",
+      content: aiReply,
+    });
+
+    console.log(
+      `📚 Historial NUEVO de ${from}: ${conversations[from].length} mensajes`
+    );
+
+    // Enviamos respuesta por WhatsApp
+    await sendWhatsAppMessage(from, aiReply);
+  } catch (error) {
+    console.error("Error procesando el webhook:", error);
   }
-}
-
-// Por si acaso queda vacío después de recortar
-if (!aiReply) {
-  aiReply = "Perfecto, cuéntame un poco más para ayudarte mejor 🙂 ¿Qué te gustaría ofrecer exactamente?";
-}
-
-// Agregar respuesta del bot al historial
-conversations[from].push({
-  role: "assistant",
-  content: aiReply,
 });
 
-// Enviamos respuesta por WhatsApp
-await sendWhatsAppMessage(from, aiReply);
+// Arrancar el servidor
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en el puerto ${PORT}`);
+});
+
