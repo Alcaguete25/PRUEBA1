@@ -4,7 +4,7 @@ const app = express();
 
 // 🔐 Configuración de credenciales
 // WhatsApp Cloud API (ya las tienes configuradas)
-const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQOrknlqOdJXY3k9TdsC6rOz4wHhAWlUnIKQDMogq8mtXrwfVmaC4ELAITIp4useI3dTZAMiJUsHY3tEOagCbxgU3rz6YlCcAmBZAAliIRlEgt15jjrcDD9mWiCBBb3LWUnrZBgwI3ezbDGbuOclt3S4G0uVDGCFo159J8i3tkvuQvxsZBWgRyMZCRBdfHpMtFLqasGzphE9ItskNyzsWxe5YJhT0BWVVG3thYHjKWAAkpHrC3OENS4kfQFy7uGrtvAccKsfLfZCujx1mVcEfkitORC";
+const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQNoF9iZBmjg8CI9mWKXBZBVZCcUDGLZCOsyzglbs3C0ja6F2uFkyrZBU0UcE7TZCNtpTvLkbNbkHpqZCXjXDiErnb3rvQJzn8dX0YUFY6ZA7BiGlNcAgWA6X4SlKjB7Xv7T1hpgR6akeRRPF9q1FDZAjq6o6DOdfHyZAIRtE9WZAdFHnqdNUXOhh4P5VYKnOGQxx19IoM5HZB8KIf4VqWUthxIEa3BGoIue8ArW6LtBQYKrkWn7k37K6ZCHZCIgaryZAzHXDoQq0WSdeyi6NotYYP5xBrlqJUkZD";
 const PHONE_NUMBER_ID = "956980390828651";
 
 // OpenAI API (la leemos desde variable de entorno en Render)
