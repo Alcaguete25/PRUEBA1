@@ -1,11 +1,14 @@
 const express = require("express");
-const fetch = require("node-fetch"); // usamos node-fetch v2
+const fetch = require("node-fetch");
 const app = express();
 
-// 🔐 Pega aquí tus datos reales de WhatsApp Cloud API
-// Ve a: developers.facebook.com → tu app → WhatsApp → Getting Started
-const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQJHl7kadkVO3LXALQnFnADriYakbQ3B98ZAK1xBCqYPo27eKxCVjxEDvZAMpwmyCTaZCteKXZCemjNSmSYaSviyegc6S7EZAZAykxuQZCyVkftSHhZBxQHY6Bw8sLkOQ5yE5hlNIJrWA1yS6QmjQbQLPKZBjRSdE4HKyZCAiJniyjPZBbCC45qXps36DiaZCT3CtZBW5oNSaaZBLmTJd1fDWYwufdN1jTGmId4AzKFNP4gKbBVZCj0AsOohtIwOQXau3pG5zx2FL0F2J9UZAbbOCbW9abetlxXw8";
+// 🔐 Configuración de credenciales
+// WhatsApp Cloud API (ya las tienes configuradas)
+const WHATSAPP_TOKEN = "EAAZCGCJENBHQBQOrknlqOdJXY3k9TdsC6rOz4wHhAWlUnIKQDMogq8mtXrwfVmaC4ELAITIp4useI3dTZAMiJUsHY3tEOagCbxgU3rz6YlCcAmBZAAliIRlEgt15jjrcDD9mWiCBBb3LWUnrZBgwI3ezbDGbuOclt3S4G0uVDGCFo159J8i3tkvuQvxsZBWgRyMZCRBdfHpMtFLqasGzphE9ItskNyzsWxe5YJhT0BWVVG3thYHjKWAAkpHrC3OENS4kfQFy7uGrtvAccKsfLfZCujx1mVcEfkitORC";
 const PHONE_NUMBER_ID = "956980390828651";
+
+// OpenAI API (la leemos desde variable de entorno en Render)
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // Puerto donde va a escuchar el servidor
 const PORT = process.env.PORT || 3000;
@@ -14,7 +17,7 @@ app.use(express.json());
 
 // Ruta básica para probar que el servidor funciona
 app.get("/", (req, res) => {
-  res.send("Servidor funcionando ✅");
+  res.send("Servidor funcionando ✅ con IA");
 });
 
 // 👉 Token que definimos para la verificación del webhook
@@ -67,7 +70,49 @@ async function sendWhatsAppMessage(to, message) {
   }
 }
 
-// ✅ Ruta POST /webhook para recibir mensajes y responder
+// 🤖 Función para generar respuesta con IA (OpenAI)
+async function generateAIReply(userText) {
+  if (!OPENAI_API_KEY) {
+    console.error("❌ OPENAI_API_KEY no está configurada");
+    return "Por ahora no tengo acceso a mi cerebro de IA 😅, intenta más tarde.";
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Eres un asesor de ventas amable y claro que atiende por WhatsApp. Haces preguntas para entender qué necesita la persona, explicas opciones breves y siempre terminas con una pregunta para avanzar en el proceso.",
+          },
+          {
+            role: "user",
+            content: userText,
+          },
+        ],
+      }),
+    });
+
+    const data = await response.json();
+    console.log("Respuesta de OpenAI:");
+    console.log(JSON.stringify(data, null, 2));
+
+    const aiMessage = data.choices?.[0]?.message?.content;
+    return aiMessage || "No entendí muy bien, ¿me cuentas de nuevo qué necesitas? 🙂";
+  } catch (error) {
+    console.error("Error llamando a OpenAI:", error);
+    return "Tuve un problema técnico procesando tu mensaje 😅. Intenta de nuevo en un momento.";
+  }
+}
+
+// ✅ Ruta POST /webhook para recibir mensajes y responder con IA
 app.post("/webhook", async (req, res) => {
   console.log("🟢 POST /webhook recibido");
   console.log("Body recibido:");
@@ -80,6 +125,13 @@ app.post("/webhook", async (req, res) => {
     const entry = req.body.entry && req.body.entry[0];
     const changes = entry && entry.changes && entry.changes[0];
     const value = changes && changes.value;
+
+    // Si es un status (entregado, leído, etc.), no respondemos
+    if (value.statuses) {
+      console.log("Es un status, no un mensaje. No respondemos.");
+      return;
+    }
+
     const messages = value && value.messages;
 
     if (!messages || messages.length === 0) {
@@ -93,11 +145,11 @@ app.post("/webhook", async (req, res) => {
 
     console.log(`👤 Mensaje de ${from}: ${text}`);
 
-    // 👉 Respuesta automática simple
-    const reply = `Hola 👋, soy tu bot de prueba. Recibí tu mensaje: "${text}"`;
+    // 👉 Generamos respuesta con IA
+    const aiReply = await generateAIReply(text);
 
     // Enviamos respuesta por WhatsApp
-    await sendWhatsAppMessage(from, reply);
+    await sendWhatsAppMessage(from, aiReply);
   } catch (error) {
     console.error("Error procesando el webhook:", error);
   }
